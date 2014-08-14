@@ -100,9 +100,10 @@ explicitEuler1 = Solver $ \dt f a s->
 
 implicitEuler1 :: Int -> Solver t
 implicitEuler1 n = Solver $ \dt f a s ->
-  let (b, x0) = f a s
-      xs = x0 : fmap (\x' -> x0 + dt *> x') xs 
-  in (b, s + dt *> (xs !! n))
+  let (b, _) = f a fn
+      xs = s : fmap (\x' -> s + dt *> x') xs
+      fn = xs !! n
+  in (b, s + dt *> fn)
 
 symplecticEuler1 :: Int -> SymplecticSolver t
 symplecticEuler1 n = SymplecticSolver
