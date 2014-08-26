@@ -57,6 +57,21 @@ simTrace2 slv dt (x:xs) f = let !(y, f') = simStep2 slv dt x f
                             in y `seq` (y : simTrace2 slv dt xs f')
 simTrace2 _ _ [] _ = []
 
+-- naïve approach to compositional methods
+simStepComp :: Solver t -> [t] -> a -> Continuous t a b -> (b, Continuous t a b)
+simStepComp (Solver solver) tt a (Continuous z f) = go tt z
+  where
+    go [dt] s =
+      let !(b, s') = solver dt f a s
+      in b `seq` (b, Continuous s' f)
+    go (dt:dts) s =
+      let !(_, s') = solver dt f a s
+      in go dts s'
+
+simTraceComp :: Solver t -> [t] -> [a] -> (Continuous t a b) -> [b]
+simTraceComp slv dt (x:xs) f = let !(y, f') = simStepComp slv dt x f
+                               in y `seq` (y : simTraceComp slv dt xs f')
+simTraceComp _ _ [] _ = []
 
 instance Field.C t => Cat.Category (Continuous t) where
   id = Continuous () (\x _ -> (x, ()))
@@ -225,6 +240,12 @@ runIt2 step n block =
       times = map (* step) [0, 1 ..] :: [Double]
   in take (succ n) $ zip times $ transpose outputs
 
+runIt3 :: forall a. Double -> Int -> Continuous Double () a -> [(Double, [a])]
+runIt3 step n block =
+  let input = repeat ()
+      outputs = map (\solver -> simTraceComp solver (tripplejump step) input block) [explicitEuler1, rungeKutta4, implicitEuler1 2]
+      times = map (* step) [0, 1 ..] :: [Double]
+  in take (succ n) $ zip times $ transpose outputs
 
 -- Show the results of the run
 
@@ -235,9 +256,23 @@ showIt2 :: [(Double, [(Double, Double)])] -> String
 showIt2 = unlines . map (\(t, uvs) -> unwords . map show $ (t : concat [[u, v] | (u, v) <- uvs]))
 
 -- Do it
+tripplejump dt = map (*dt) 
+  [ g1 2 
+  , g2 2 
+  , g1 2 
+  ]
+
+g1 :: Int -> Double
+g1 p =  1 / (2 - 2**(1/(fromIntegral p+1)))
+
+g2 :: Int -> Double
+g2 p = - 2**(1/(fromIntegral p+1)) / ( 2 - 2**(1/(fromIntegral p+1)))
+
+
 
 main :: IO ()
 main = do
   writeFile "sine.dat" (showIt1 $ runIt 0.01 1000 $ sine)
+  writeFile "sine2.dat" (showIt1 $ runIt3 0.01 1000 $ sine)
   writeFile "sys1.dat" (showIt2 $ runIt 0.01 1000 $ sys1 (0.5, 0.6))
   writeFile "sys1a.dat" (showIt2 $ runIt2 0.01 1000 $ sys1a (0.5, 0.6))
